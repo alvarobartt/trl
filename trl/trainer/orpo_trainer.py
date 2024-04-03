@@ -397,16 +397,18 @@ class ORPOTrainer(Trainer):
         chosen = feature["chosen"]
         rejected = feature["rejected"]
 
+        print(f"{self.is_encoder_decoder=}")
         if not self.is_encoder_decoder:
             if not isinstance(prompt, str):
                 raise ValueError(f"prompt should be an str but got {type(prompt)}")
             prompt_tokens = self.tokenizer(
                 prompt,
-                max_length=self.max_prompt_length,
+                max_length=self.max_length,
                 padding="max_length",
                 truncation=True,
                 add_special_tokens=False,
             )
+            print(f"{len(prompt_tokens['attention_mask'])=}")
 
             batch["prompt_input_ids"] = prompt_tokens["input_ids"]
             batch["prompt_attention_mask"] = prompt_tokens["attention_mask"]
@@ -620,6 +622,8 @@ class ORPOTrainer(Trainer):
 
         We do this to avoid doing two forward passes, because it's faster for FSDP.
         """
+        print(f"{batch['prompt_attention_mask'].shape=}")
+        print(f"{batch['chosen_attention_mask']}")
         concatenated_batch = self.concatenated_inputs(
             batch,
             is_encoder_decoder=self.is_encoder_decoder,
@@ -627,7 +631,7 @@ class ORPOTrainer(Trainer):
             padding_value=self.padding_value,
             device=self.accelerator.device,
         )
-        len_chosen = batch["chosen_labels"].shape[0]
+        len_chosen = batch["chosen_input_ids"].shape[0]
 
         model_kwargs = (
             {
@@ -640,8 +644,9 @@ class ORPOTrainer(Trainer):
         outputs = model(
             input_ids=concatenated_batch["concatenated_input_ids"],
             attention_mask=concatenated_batch["concatenated_attention_mask"],
-            labels=concatenated_batch["concatenated_labels"],
+            labels=concatenated_batch["concatenated_input_ids"],
             use_cache=False,
+            output_hidden_states=True,
             **model_kwargs,
         )
         all_logits = outputs.logits
@@ -662,20 +667,30 @@ class ORPOTrainer(Trainer):
 
         labels = concatenated_batch["concatenated_labels"].clone()
         chosen_nll_loss = cross_entropy_loss(all_logits[:len_chosen], labels[:len_chosen])
-
-        all_logps = self.get_batch_logps(
-            all_logits,
-            concatenated_batch["concatenated_labels"],
-            average_log_prob=True,
-            is_encoder_decoder=self.is_encoder_decoder,
-            label_pad_token_id=self.label_pad_token_id,
-        )
-
-        chosen_logps = all_logps[:len_chosen]
-        rejected_logps = all_logps[len_chosen:]
-
+        print(f"LOOK AT ME {chosen_nll_loss=}")
+        
         chosen_logits = all_logits[:len_chosen]
         rejected_logits = all_logits[len_chosen:]
+
+        chosen_mask = batch["chosen_attention_mask"][:, :-1] - batch["prompt_attention_mask"][:, 1:]
+
+        per_token_logps = torch.gather(
+            chosen_logits[:, :-1, :].log_softmax(-1),
+            dim=2,
+            index=(chosen_mask * batch["chosen_input_ids"][:, 1:]).unsqueeze(2),
+        ).squeeze(2)
+
+        chosen_logps = torch.mul(per_token_logps, chosen_mask.to(dtype=torch.bfloat16)).sum(dim=1).to(dtype=torch.float64) / chosen_mask.sum(dim=1).to(dtype=torch.float64)
+
+        rejected_mask = batch["rejected_attention_mask"][:, :-1] - batch["prompt_attention_mask"][:, 1:]
+
+        per_token_logps = torch.gather(
+            rejected_logits[:, :-1, :].log_softmax(-1),
+            dim=2,
+            index=(rejected_mask * batch["rejected_input_ids"][:, 1:]).unsqueeze(2),
+        ).squeeze(2)
+
+        rejected_logps = torch.mul(per_token_logps, rejected_mask.to(dtype=torch.bfloat16)).sum(dim=1).to(dtype=torch.float64) / rejected_mask.sum(dim=1).to(dtype=torch.float64)
 
         return (chosen_logps, rejected_logps, chosen_logits, rejected_logits, chosen_nll_loss)
 
