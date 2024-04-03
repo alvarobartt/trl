@@ -434,9 +434,9 @@ class ORPOTrainer(Trainer):
             batch["chosen_input_ids"] = chosen_tokens["input_ids"]
             batch["chosen_attention_mask"] = chosen_tokens["attention_mask"]
 
-            chosen_labels = chosen_tokens["input_ids"].clone()
+            chosen_labels = deepcopy(chosen_tokens["input_ids"])
             batch["chosen_labels"] = chosen_labels
-            batch["chosen_labels"] = chosen_labels[chosen_labels == self.tokenizer.pad_token_id] = -100
+            # batch["chosen_labels"] = chosen_labels[chosen_labels == self.tokenizer.pad_token_id] = -100
 
             if not isinstance(rejected, str):
                 raise ValueError(f"rejected should be an str but got {type(rejected)}")
@@ -452,7 +452,7 @@ class ORPOTrainer(Trainer):
             batch["rejected_input_ids"] = rejected_tokens["input_ids"]
             batch["rejected_attention_mask"] = rejected_tokens["attention_mask"]
 
-            rejected_labels = rejected_tokens["input_ids"].clone()
+            rejected_labels = deepcopy(rejected_tokens["input_ids"])
             batch["rejected_labels"] = rejected_labels
             # batch["rejected_labels"] = rejected_labels[rejected_labels == self.tokenizer.pad_token_id] = -100
         else:
