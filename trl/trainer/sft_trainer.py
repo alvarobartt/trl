@@ -162,6 +162,7 @@ class SFTTrainer(Trainer):
             model_init_kwargs["torch_dtype"] = (
                 model_init_kwargs["torch_dtype"]
                 if model_init_kwargs["torch_dtype"] in ["auto", None]
+                or isinstance(model_init_kwargs["torch_dtype"], torch.dtype)
                 else getattr(torch, model_init_kwargs["torch_dtype"])
             )
 
