@@ -41,9 +41,6 @@ def main():
 
         trl_examples_dir = os.path.dirname(__file__)
 
-    # Force-use rich
-    os.environ["TRL_USE_RICH"] = "1"
-
     if command_name == "chat":
         command = f"""
         python {trl_examples_dir}/scripts/{command_name}.py {" ".join(sys.argv[2:])}
