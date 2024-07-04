@@ -45,7 +45,6 @@ python examples/scripts/sft.py \
     --lora_alpha=16
 """
 
-import sys
 import logging
 import os
 from contextlib import nullcontext
@@ -80,13 +79,7 @@ from trl import (
 tqdm.pandas()
 
 if TRL_USE_RICH:
-    logging.basicConfig(
-        format=FORMAT,
-        datefmt="[%X]",
-        handlers=[RichHandler()],
-        level=logging.INFO,
-        stream=sys.stdout,
-    )
+    logging.basicConfig(format=FORMAT, datefmt="[%X]", handlers=[RichHandler()], level=logging.INFO)
 
 
 if __name__ == "__main__":
